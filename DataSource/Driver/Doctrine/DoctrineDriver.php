@@ -4,14 +4,17 @@ namespace Netdudes\DataSourceryBundle\DataSource\Driver\Doctrine;
 use Doctrine\ORM\NoResultException;
 use Doctrine\ORM\QueryBuilder;
 use Netdudes\DataSourceryBundle\DataSource\Configuration\Field;
+use Netdudes\DataSourceryBundle\DataSource\Configuration\NativeField;
 use Netdudes\DataSourceryBundle\DataSource\DataSourceInterface;
 use Netdudes\DataSourceryBundle\DataSource\Driver\Doctrine\Events\PostFetchEvent;
 use Netdudes\DataSourceryBundle\DataSource\Driver\Doctrine\Exception\ColumnNotFoundException;
 use Netdudes\DataSourceryBundle\DataSource\Driver\Doctrine\Exception\ColumnNotSelectedException;
+use Netdudes\DataSourceryBundle\DataSource\Driver\Doctrine\Exception\InvalidQueryException;
 use Netdudes\DataSourceryBundle\DataSource\Driver\Doctrine\QueryBuilder\BuilderFactory;
 use Netdudes\DataSourceryBundle\DataSource\Driver\DriverInterface;
 use Netdudes\DataSourceryBundle\Query\Query;
 use Netdudes\DataSourceryBundle\Query\QueryInterface;
+use Netdudes\DataSourceryBundle\Query\SortCondition;
 
 class DoctrineDriver implements DriverInterface
 {
@@ -38,6 +41,8 @@ class DoctrineDriver implements DriverInterface
      */
     public function getData(DataSourceInterface $dataSource, QueryInterface $query)
     {
+        $this->validateQuery($query, $dataSource);
+
         $queryBuilder = $this->getQueryBuilder($dataSource, $query);
         $rows = $this->fetchData($queryBuilder, $query, $dataSource);
 
@@ -49,6 +54,8 @@ class DoctrineDriver implements DriverInterface
      */
     public function getRecordCount(DataSourceInterface $dataSource, QueryInterface $query)
     {
+        $this->validateQuery($query, $dataSource);
+
         $queryBuilder = $this->getQueryBuilder($dataSource, $query);
         $queryBuilder->select('count(DISTINCT ' . $queryBuilder->getDQLPart('from')[0]->getAlias() . ')');
         $queryBuilder->resetDQLPart('groupBy');
@@ -166,5 +173,36 @@ class DoctrineDriver implements DriverInterface
         }
 
         return null;
+    }
+
+    /**
+     * @param Query               $query
+     * @param DataSourceInterface $dataSource
+     *
+     * @throws InvalidQueryException
+     */
+    private function validateQuery(Query $query, DataSourceInterface $dataSource)
+    {
+        $filteredFields = [];
+        foreach ($query->getFilter()->getAllFilterConditionsFlat() as $filterCondition) {
+            $field = $this->findQueryBuilderDataSourceFieldByUniqueName($filterCondition->getFieldName(), $dataSource->getFields());
+            if (!in_array($field, $filteredFields, true)) {
+                $filteredFields[] = $field;
+            }
+        }
+
+        /** @var SortCondition $sortCondition */
+        foreach ($query->getSort() as $sortCondition) {
+            $field = $this->findQueryBuilderDataSourceFieldByUniqueName($sortCondition->getFieldName(), $dataSource);
+            if (!in_array($field, $filteredFields, true)) {
+                $filteredFields[] = $field;
+            }
+        }
+
+        foreach ($filteredFields as $field) {
+            if ($field instanceof NativeField) {
+                throw new InvalidQueryException("Cannot filter or search by a NativeField");
+            }
+        }
     }
 }

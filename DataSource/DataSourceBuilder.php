@@ -2,6 +2,7 @@
 namespace Netdudes\DataSourceryBundle\DataSource;
 
 use Netdudes\DataSourceryBundle\DataSource\Configuration\Field;
+use Netdudes\DataSourceryBundle\DataSource\Configuration\NativeField;
 use Netdudes\DataSourceryBundle\DataSource\Exception\InvalidDataTypeException;
 use Netdudes\DataSourceryBundle\DataSource\Util\ChoicesBuilder;
 use Netdudes\DataSourceryBundle\DataType\BooleanDataType;
@@ -15,6 +16,7 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
 class DataSourceBuilder implements DataSourceBuilderInterface
 {
+
     /**
      * @var EventDispatcherInterface
      */
@@ -178,25 +180,49 @@ class DataSourceBuilder implements DataSourceBuilderInterface
 
     private function newNativeField($name, $type, $alias, $options)
     {
-        return $this->newRawField($name, $type, null, $alias, $options);
+        return $this->newRawNativeField($name, $type, null, $alias, $options);
     }
 
     private function newRawField($name, $type, $field, $alias, $options)
     {
-        $readable = $this->getOption($options, 'readable', $name);
-        $description = $this->getOption($options, 'description', "");
-        $choices = $this->getOption($options, 'choices', null);
-        if ($choices) {
-            $choices = $this->parseChoices($choices);
-        }
+        $options = $this->parseOptions($name, $options);
 
         $type = $this->getDataTypeByName($type);
 
-        return new Field($name, $readable, $description, $type, $field, $alias, $choices);
+        return new Field($name, $options['readable'], $options['description'], $type, $field, $alias, $options['choices']);
+    }
+
+    private function newRawNativeField($name, $type, $field, $alias, $options)
+    {
+        $options = $this->parseOptions($name, $options);
+
+        $type = $this->getDataTypeByName($type);
+
+        return new NativeField($name, $options['readable'], $options['description'], $type, $field, $alias, $options['choices']);
     }
 
     private function parseChoices($choices)
     {
         return $this->choicesBuilder->build($choices);
+    }
+
+    /**
+     * @param $name
+     * @param $options
+     *
+     * @return array
+     */
+    private function parseOptions($name, $options)
+    {
+        $readable = $this->getOption($options, 'readable', $name);
+        $description = $this->getOption($options, 'description', "");
+        $choices = $this->getOption($options, 'choices', null);
+        $choices = $choices ? $this->parseChoices($choices) : null;
+
+        return [
+            'readable' => $readable,
+            'description' => $description,
+            'choices' => $choices
+        ];
     }
 }
